@@ -1,0 +1,14 @@
+[Unit]
+Description="etcd service"
+After=network.target
+
+[Service]
+LimitNOFILE=65536
+Restart=on-failure
+Type=notify
+ExecStart=/usr/bin/etcd --config-file {{ etcd_conf_file }}
+User={{ etcd_user }}
+Group={{ etcd_user }}
+
+[Install]
+WantedBy=multi-user.target

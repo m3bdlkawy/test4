@@ -1,0 +1,65 @@
+scope: postgres
+namespace: /service
+name: {{ instance_name }}
+
+restapi:
+  listen: {{ instance_address }}:8008
+  connect_address: {{ instance_address }}:8008
+
+etcd:
+  hosts:
+    - {{ instance_address }}:2379
+
+bootstrap:
+  dcs:
+    etcd:
+      hosts:
+        - {{ instance_address }}:2379
+    initdb:
+      - encoding: UTF8
+      - locale: en_US.UTF-8
+    postgresql:
+      parameters:
+        shared_buffers: 256MB
+        max_connections: 100
+        max_wal_size: 1GB
+        min_wal_size: 80MB
+    replication:
+      user: replicator
+      password: replicatorpass
+    constraints:
+      leader: "+pgsql"
+      replica: "+pgsql"
+      standby: "+pgsql"
+  initdb:
+    - encoding: UTF8
+    - locale: en_US.UTF-8
+  pg_hba:
+    - hostssl all all 0.0.0.0/0 trust
+
+postgresql:
+  listen: {{ instance_address }}:5432
+  connect_address: {{ instance_address }}:5432
+  data_dir: /var/lib/postgresql/data
+  bin_dir: /usr/lib/postgresql/14/bin
+  authentication:
+    replication:
+      username: replicator
+      password: replicatorpass
+    superuser:
+      username: postgres
+      password: postgrespass
+  parameters:
+    max_connections: 100
+    shared_buffers: 256MB
+    wal_level: replica
+    hot_standby: "on"
+
+watchdog:
+  mode: off
+
+tags:
+  nofailover: false
+  noloadbalance: false
+  clonefrom: false
+  nosync: false

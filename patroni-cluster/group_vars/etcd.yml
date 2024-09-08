@@ -1,0 +1,2 @@
+etcd_hosts: "{{ groups['etcd'] | map('extract', hostvars, 'ansible_host') | join(',') }}"
+

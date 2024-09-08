@@ -1,0 +1,89 @@
+- name: Create /tmp/ansible directory with proper permissions
+  ansible.builtin.file:
+    path: /tmp/ansible
+    state: directory
+    mode: '1777'
+    owner: root
+    group: root
+  become: true
+  delegate_to: "{{ inventory_hostname }}"
+
+- name: Install PostgreSQL and prerequisites
+  include_tasks: install_postgresql.yml
+
+- name: Configure PostgreSQL users for Patroni
+  include_tasks: create_users.yml
+  tags:
+  - configure_users
+
+
+- name: Install Patroni
+  apt:
+    name: "{{ patroni_package }}"
+    state: present
+  become: true
+
+- name: Stop and disable services
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: no
+  loop:
+  - etcd
+  - patroni
+  - postgresql
+  become: true
+
+- name: Remove PostgreSQL data directory using shell command
+  ansible.builtin.shell: |
+    if [ -d /var/lib/postgresql/16/main ]; then
+      sudo rm -rf /var/lib/postgresql/16/main
+    fi
+  become: true
+
+- name: Ensure PostgreSQL service is disabled
+  ansible.builtin.systemd:
+    name: postgresql
+    enabled: no
+  become: true
+
+- name: Enable and start etcd service
+  ansible.builtin.systemd:
+    name: etcd
+    enabled: true
+    state: started
+  become: true
+
+- name: Wait for etcd to be available
+  ansible.builtin.wait_for:
+    host: "{{ ansible_fqdn }}"
+    port: 2379
+    state: started
+    delay: 5
+    timeout: 30
+  become: true
+
+- name: Ensure patroni user exists
+  ansible.builtin.user:
+    name: patroni
+    state: present
+  become: true
+
+- name: Configure Patroni
+  ansible.builtin.template:
+    src: patroni.yml.j2
+    dest: /etc/patroni/patroni.yml
+    owner: patroni
+    group: patroni
+    mode: '0644'
+  become: true
+
+- name: Ensure systemd unit file for Patroni is created
+  ansible.builtin.template:
+    src: patroni.service.j2
+    dest: /etc/systemd/system/patroni.service
+  when: not ansible_facts.services['patroni.service'] is defined
+
+- include_tasks: start_patroni.yml
+
+- include_tasks: timescaledb.yml

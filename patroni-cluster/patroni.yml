@@ -1,0 +1,6 @@
+---
+- name: Configure patroni cluster
+  hosts: patroni
+  become: true
+  roles:
+  - patroni

@@ -1,0 +1,40 @@
+- name: Add PostgreSQL APT repository GPG key
+  ansible.builtin.apt_key:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    state: present
+  become: true
+
+- name: Add PostgreSQL repository
+  ansible.builtin.apt_repository:
+    repo: "deb http://apt.postgresql.org/pub/repos/apt/ {{ ansible_lsb.codename }}-pgdg main"
+    state: present
+    filename: "pgdg"
+  become: true
+
+- name: Update package cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600 # Cache validity in seconds (e.g., 1 hour)
+  become: true
+
+- name: Upgrade all packages to the latest version
+  ansible.builtin.apt:
+    upgrade: dist
+  become: true
+
+- name: Install required packages
+  ansible.builtin.apt:
+    name: "{{ packages_to_install }}"
+    state: present
+    update_cache: true
+  become: true
+
+- name: Install PostgreSQL server, client, and server development packages
+  ansible.builtin.apt:
+    name:
+    - "postgresql-{{ postgresql_version }}"
+    - "postgresql-client-{{ postgresql_version }}"
+    - "postgresql-server-dev-{{ postgresql_version }}"
+    state: present
+  become: true
+

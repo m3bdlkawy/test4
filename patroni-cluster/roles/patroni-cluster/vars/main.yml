@@ -1,0 +1,24 @@
+# vars file for patroni-cluster
+postgresql_packages_debian:
+- postgresql
+- postgresql-contrib
+
+postgresql_packages_redhat:
+- postgresql-server
+- postgresql-contrib
+
+patroni_dependencies_debian:
+- python3-pip
+- python3-dev
+- libpq-dev
+- python3-psycopg2
+
+patroni_dependencies_redhat:
+- python3-pip
+- python3-devel
+- libpq-devel
+
+
+
+
+

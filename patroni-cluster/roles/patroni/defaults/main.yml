@@ -1,0 +1,3 @@
+# defaults file for patroni
+node_name: "{{ inventory_hostname }}"
+node_ip: "{{ ansible_default_ipv4.address }}"

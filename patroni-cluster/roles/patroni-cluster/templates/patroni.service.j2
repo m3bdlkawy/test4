@@ -1,0 +1,19 @@
+[Unit]
+Description=Patroni Service
+After=syslog.target network.target
+
+[Service]
+Type=simple
+User=postgres
+Group=postgres
+ExecStart=/usr/local/bin/patroni /etc/patroni.yml
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+KillMode=process
+TimeoutSec=30
+StandardOutput=file:/var/log/patroni.log
+StandardError=file:/var/log/patroni.log
+
+[Install]
+WantedBy=multi-user.target

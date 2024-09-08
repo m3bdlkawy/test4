@@ -1,0 +1,5 @@
+# handlers file for patroni
+- name: Restart Patroni
+  systemd:
+    name: patroni
+    state: restarted

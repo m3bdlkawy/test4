@@ -1,0 +1,48 @@
+# vars file for patroni
+packages_to_install:
+- python3-pip
+- python3-dev
+- binutils
+- wget
+- curl
+- gnupg
+- postgresql-common
+- apt-transport-https
+- lsb-release
+- wget
+#- percona-patroni
+#- etcd
+#- etcd-server
+#- etcd-client
+#- percona-pgbackrest
+
+
+#percona_release_url: "https://repo.percona.com/apt/percona-release_latest.{{ ansible_lsb.codename }}_all.deb"
+
+
+
+
+# PostgreSQL database and user details
+db_name: 'your_database_name'
+db_user: 'your_db_user'
+db_password: 'your_db_password'
+
+
+# Define variables for package URLs and versions
+postgresql_version: 16
+timescaledb_version: timescaledb-2-postgresql-16
+timescaledb_repo_ubuntu: "deb https://packagecloud.io/timescale/timescaledb/ubuntu/ {{ ansible_lsb.codename }} main"
+timescaledb_repo_debian: "deb https://packagecloud.io/timescale/timescaledb/debian/ {{ ansible_lsb.codename }} main"
+timescaledb_key_url: "https://packagecloud.io/timescale/timescaledb/gpgkey"
+
+# vars/main.yml
+patroni_package: patroni
+
+# password for the user of postgresql
+patroni_replication_password: "replPasswd"
+patroni_superuser_password: "qaz123"
+
+# Patroni configuration
+patroni_scope: "cluster_1"
+patroni_namespace: "default"
+patroni_admin_password: "adminPass"

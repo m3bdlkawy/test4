@@ -1,0 +1,103 @@
+- name: Set etcd_initial_cluster fact
+  ansible.builtin.set_fact:
+    etcd_initial_cluster: >
+      {%- set initial_cluster = [] -%} {%- for host in groups['etcd'] -%}
+        {%- set _ = initial_cluster.append(host ~ '=http://' ~ hostvars[host].ansible_host ~ ':2380') -%}
+      {%- endfor -%} {{ initial_cluster | join(',') }}
+- name: Download etcd binary
+  ansible.builtin.get_url:
+    url: "{{ download_url }}/{{ etcd_version }}/etcd-{{ etcd_version }}-linux-amd64.tar.gz"
+    dest: "/tmp/etcd-{{ etcd_version }}-linux-amd64.tar.gz"
+
+- name: Extract etcd binary
+  ansible.builtin.unarchive:
+    src: "/tmp/etcd-{{ etcd_version }}-linux-amd64.tar.gz"
+    dest: "/tmp"
+    remote_src: true
+
+- name: Move etcd binaries to /usr/bin
+  ansible.builtin.shell: |
+    mv /tmp/etcd-{{ etcd_version }}-linux-amd64/etcd /usr/bin
+    mv /tmp/etcd-{{ etcd_version }}-linux-amd64/etcdctl /usr/bin
+    mv /tmp/etcd-{{ etcd_version }}-linux-amd64/etcdutl /usr/bin
+  become: true
+
+- name: Ensure /etc/hosts contains the cluster nodes
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    block: |
+      {% for host in groups['all'] %}
+      {{ hostvars[host]['ansible_host'] }} {{ hostvars[host]['inventory_hostname'] }}
+      {% endfor %}
+    marker: "# BEGIN ANSIBLE MANAGED BLOCK"
+    create: yes
+    state: present
+    insertafter: EOF
+    backup: yes
+  become: true
+
+- name: Set ownership of etcd binaries
+  ansible.builtin.file:
+    path: "{{ etcd_bin_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+  - etcd
+  - etcdctl
+  - etcdutl
+  become: true
+
+- name: Remove temporary files
+  ansible.builtin.file:
+    path: "/tmp/etcd-{{ etcd_version }}-linux-amd64"
+    state: absent
+  become: true
+
+- name: Create etcd user
+  ansible.builtin.user:
+    name: "{{ etcd_user }}"
+    system: true
+    create_home: no
+    state: present
+  become: true
+
+- name: Create etcd directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ etcd_user }}"
+    group: "{{ etcd_user }}"
+  loop:
+  - "{{ etcd_conf_dir }}"
+  - "{{ etcd_data_dir }}"
+  become: true
+
+- name: Deploy etcd configuration file
+  ansible.builtin.template:
+    src: etcd.conf.yml.j2
+    dest: "{{ etcd_conf_file }}"
+    owner: "{{ etcd_user }}"
+    group: "{{ etcd_user }}"
+    mode: '0644'
+
+- name: Create etcd systemd service file
+  ansible.builtin.template:
+    src: etcd.service.j2
+    dest: /usr/lib/systemd/system/etcd.service
+    owner: root
+    group: root
+    mode: '0644'
+  become: true
+
+- name: Reload systemd manager configuration
+  ansible.builtin.systemd:
+    daemon_reload: true
+  become: true
+
+- name: Enable and start etcd service
+  ansible.builtin.systemd:
+    name: etcd
+    enabled: true
+    state: started
+  become: true

@@ -1,0 +1,5 @@
+- name: Configure etcd cluster
+  hosts: patroni
+  become: true
+  roles:
+  - etcd

@@ -1,0 +1,93 @@
+- name: Install community.postgresql Ansible collection
+  ansible.builtin.command:
+    cmd: ansible-galaxy collection install community.postgresql
+  run_once: true
+  delegate_to: localhost
+  tags:
+  - install_collection
+
+- name: Install psycopg2 library
+  ansible.builtin.pip:
+    name: psycopg2
+    state: present
+  become: true
+
+
+- name: Ensure PostgreSQL service is started
+  ansible.builtin.systemd:
+    name: postgresql
+    state: started
+    enabled: yes
+  become: true
+  tags:
+  - postgresql
+  - start_service
+
+- name: Ensure PostgreSQL user 'replicator' exists
+  community.postgresql.postgresql_query:
+    query: |
+      DO $$
+      BEGIN
+        -- Check if the user exists
+        IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'replicator') THEN
+          -- Create the user if it does not exist
+          EXECUTE 'CREATE USER replicator WITH PASSWORD ''{{ patroni_replication_password }}''';
+        END IF;
+      END
+      $$;
+    db: postgres
+    login_user: postgres
+    login_password: "{{ patroni_superuser_password }}"
+    login_unix_socket: "/var/run/postgresql"
+  become: true
+  become_user: postgres
+  tags:
+  - postgresql
+  - user
+
+- name: Ensure PostgreSQL user 'replicator' has replication privileges
+  community.postgresql.postgresql_query:
+    query: |
+      ALTER USER replicator WITH REPLICATION;
+    db: postgres
+    login_user: postgres
+    login_password: "{{ patroni_superuser_password }}"
+    login_unix_socket: "/var/run/postgresql"
+  become: true
+  become_user: postgres
+  tags:
+  - postgresql
+  - user
+
+- name: Ensure PostgreSQL user 'postgres' exists with a new password
+  community.postgresql.postgresql_query:
+    query: |
+      DO $$
+      BEGIN
+        -- Check if the user exists
+        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'postgres') THEN
+          -- Alter the user password if it exists
+          EXECUTE 'ALTER USER postgres WITH PASSWORD ''{{ patroni_superuser_password }}''';
+        ELSE
+          RAISE NOTICE 'User postgres does not exist';
+        END IF;
+      END
+      $$;
+    db: postgres
+    login_user: postgres
+    login_password: "{{ patroni_superuser_password }}"
+    login_unix_socket: "/var/run/postgresql"
+  become: true
+  become_user: postgres
+  tags:
+  - postgresql
+  - user
+
+- name: Stop PostgreSQL service
+  ansible.builtin.systemd:
+    name: postgresql
+    state: stopped
+  become: true
+  tags:
+  - postgresql
+  - stop_service

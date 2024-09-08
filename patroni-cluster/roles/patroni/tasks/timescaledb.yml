@@ -1,0 +1,90 @@
+# Install community.postgresql Ansible collection
+- name: Install community.postgresql Ansible collection
+  ansible.builtin.command:
+    cmd: ansible-galaxy collection install community.postgresql
+  run_once: true
+  become: true
+  delegate_to: localhost
+
+# Install TimescaleDB package signing key
+- name: Install TimescaleDB package signing key
+  ansible.builtin.apt_key:
+    url: "{{ timescaledb_key_url }}"
+    state: present
+  become: true
+
+# Add TimescaleDB repository for Ubuntu
+- name: Add TimescaleDB repository for Ubuntu
+  ansible.builtin.apt_repository:
+    repo: "{{ timescaledb_repo_ubuntu }}"
+    state: present
+  when: ansible_facts['os_family'] == 'Debian' and ansible_facts['distribution'] == 'Ubuntu'
+  become: true
+
+# Add TimescaleDB repository for Debian
+- name: Add TimescaleDB repository for Debian
+  ansible.builtin.apt_repository:
+    repo: "{{ timescaledb_repo_debian }}"
+    state: present
+  when: ansible_facts['os_family'] == 'Debian' and ansible_facts['distribution'] == 'Debian'
+  become: true
+
+# Update APT cache
+- name: Update APT cache
+  ansible.builtin.apt:
+    update_cache: yes
+  become: true
+
+# Update PostgreSQL configuration
+- name: Update PostgreSQL configuration
+  ansible.builtin.lineinfile:
+    path: /etc/postgresql/16/main/postgresql.conf
+    line: "shared_preload_libraries = 'timescaledb'"
+    create: yes
+  become: true
+
+- name: Check if the node is the Patroni leader
+  command: patronictl -c /etc/patroni/patroni.yml list --format json
+  register: patroni_status
+  changed_when: false
+  failed_when: false
+
+- name: Set fact if the current node is the Patroni leader
+  set_fact:
+    is_leader: "{{ item.Role == 'Leader' }}"
+  with_items: "{{ patroni_status.stdout | from_json }}"
+  when: item.Host == ansible_host
+
+- name: Install TimescaleDB package
+  ansible.builtin.apt:
+    name: "{{ timescaledb_version }}"
+    state: present
+    update_cache: yes
+  when: is_leader | bool
+
+- name: Ensure TimescaleDB extension is created in PostgreSQL
+  community.postgresql.postgresql_query:
+    db: "{{ db_name }}"
+    query: |
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb') THEN
+          EXECUTE 'CREATE EXTENSION IF NOT EXISTS timescaledb';
+        END IF;
+      END
+      $$;
+    login_user: postgres
+    login_password: "{{ patroni_superuser_password }}"
+    login_unix_socket: "/var/run/postgresql"
+  when: is_leader | bool
+
+- name: Run TimescaleDB tuning
+  ansible.builtin.command:
+    cmd: timescaledb-tune --quiet --yes
+  when: is_leader | bool
+
+- name: Restart PostgreSQL service
+  ansible.builtin.systemd:
+    name: postgresql
+    state: restarted
+  when: is_leader | bool

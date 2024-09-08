@@ -1,0 +1,9 @@
+name: "{{ etcd_instance_name }}"
+data-dir: "{{ etcd_data_dir }}"
+initial-cluster-state: 'new'
+initial-cluster-token: 'etcd-cluster'
+initial-cluster: "{{ etcd_initial_cluster }}"
+initial-advertise-peer-urls: http://{{ etcd_instance_address }}:2380
+advertise-client-urls: http://{{ etcd_instance_address }}:2379
+listen-peer-urls: 'http://{{ etcd_instance_address }}:2380,http://127.0.0.1:2380'
+listen-client-urls: 'http://{{ etcd_instance_address }}:2379,http://127.0.0.1:2379'

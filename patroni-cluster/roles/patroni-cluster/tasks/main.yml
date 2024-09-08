@@ -1,0 +1,186 @@
+- name: Update APT packages
+  ansible.builtin.apt:
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+
+- name: Update and upgrade YUM packages
+  ansible.builtin.yum:
+    name: '*'
+    state: latest
+  when: ansible_os_family == "RedHat"
+
+- name: Install PostgreSQL on Debian-based systems
+  ansible.builtin.apt:
+    name: "{{ postgresql_packages_debian }}"
+    state: present
+  when: ansible_os_family == "Debian"
+  become: true
+
+- name: Install PostgreSQL on Red Hat-based systems
+  ansible.builtin.yum:
+    name: "{{ postgresql_packages_redhat }}"
+    state: present
+  when: ansible_os_family == "RedHat"
+  become: true
+
+- name: Stop PostgreSQL service
+  ansible.builtin.systemd:
+    name: postgresql
+    state: stopped
+  become: true
+
+- name: Disable PostgreSQL service
+  ansible.builtin.systemd:
+    name: postgresql
+    enabled: no
+  become: true
+
+- name: Install Patroni dependencies on Debian-based systems
+  ansible.builtin.apt:
+    name: "{{ patroni_dependencies_debian }}"
+    state: present
+  when: ansible_os_family == "Debian"
+  become: true
+
+- name: Install Patroni dependencies on Red Hat-based systems
+  ansible.builtin.yum:
+    name: "{{ patroni_dependencies_redhat }}"
+    state: present
+  when: ansible_os_family == "RedHat"
+  become: true
+
+- name: Upgrade pip and install Patroni
+  ansible.builtin.shell: |
+    pip3 install --upgrade pip
+    pip3 install patroni python-etcd psycopg2 --break-system-packages
+  become: true
+
+- name: Create Patroni configuration file
+  ansible.builtin.template:
+    src: patroni.yml.j2
+    dest: /etc/patroni.yml
+  become: true
+
+- name: Create Patroni systemd service file
+  ansible.builtin.template:
+    src: patroni.service.j2
+    dest: /usr/lib/systemd/system/patroni.service
+    mode: '0644'
+  become: true
+
+- name: Create PostgreSQL data directory
+  ansible.builtin.file:
+    path: /var/lib/postgresql/data
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: '0700'
+  become: true
+
+- name: Enable Patroni service
+  ansible.builtin.systemd:
+    name: patroni.service
+    enabled: true
+  become: true
+
+
+# Ensure /home/mohamed has the correct ownership and permissions
+- name: Ensure /home/mohamed is owned by postgres
+  file:
+    path: /home/mohamed
+    owner: postgres
+    group: postgres
+    mode: '0700'
+  become: true
+
+# Ensure /var/lib/postgresql/data has the correct ownership and permissions
+- name: Ensure /var/lib/postgresql/data has the correct ownership and permissions
+  file:
+    path: /var/lib/postgresql/data
+    owner: postgres
+    group: postgres
+    mode: '0700'
+  become: true
+
+- name: Start Patroni service
+  ansible.builtin.systemd:
+    name: patroni.service
+    state: started
+  become: true
+
+- name: Check Patroni service logs
+  ansible.builtin.shell: journalctl -u patroni.service -f
+  become: true
+  async: 60
+  poll: 0
+
+- name: Get Patroni cluster members
+  ansible.builtin.shell: sudo -u postgres patronictl -c /etc/patroni.yml list
+  become: true
+
+- name: Detect the Patroni master node
+  ansible.builtin.shell: |
+    sudo -u postgres patronictl -c /etc/patroni.yml list | grep -w "Master"
+  register: patroni_master_check
+  become: true
+
+- name: Set fact if this is the master node
+  ansible.builtin.set_fact:
+    is_patroni_master: "{{ 'Master' in patroni_master_check.stdout }}"
+
+- name: Create test table on master
+  ansible.builtin.shell: |
+    psql -U postgres -c "create table mydata(key text, value text);"
+    psql -U postgres -c "insert into mydata values('foo', 'bar');"
+  when: is_patroni_master
+  become: true
+
+- name: Query test data on worker
+  ansible.builtin.shell: psql -U postgres -c "select * from mydata;"
+  when: not is_patroni_master
+  become: true
+
+
+- name: Add TimescaleDB repository for Ubuntu
+  apt_repository:
+    repo: "{{ timescaledb_repo_ubuntu }}"
+    state: present
+  when: ansible_facts['os_family'] == 'Debian' and ansible_facts['distribution'] == 'Ubuntu'
+  become: true
+
+- name: Add TimescaleDB repository for Debian
+  apt_repository:
+    repo: "{{ timescaledb_repo_debian }}"
+    state: present
+  when: ansible_facts['os_family'] == 'Debian' and ansible_facts['distribution'] == 'Debian'
+  become: true
+
+- name: Install TimescaleDB package signing key
+  apt_key:
+    url: "{{ timescaledb_key_url }}"
+    state: present
+  become: true
+
+- name: Install TimescaleDB package
+  apt:
+    name: "{{ timescaledb_version }}"
+    state: present
+    update_cache: yes
+  become: true
+
+- name: Run TimescaleDB tuning
+  command: timescaledb-tune --quiet --yes
+  become: true
+
+- name: Restart PostgreSQL service
+  systemd:
+    name: postgresql
+    state: restarted
+  become: true
+
+- name: Create TimescaleDB extension in PostgreSQL
+  postgresql_query:
+    db: postgres
+    query: "CREATE EXTENSION IF NOT EXISTS timescaledb;"
+  become: true
+  become_user: postgres
